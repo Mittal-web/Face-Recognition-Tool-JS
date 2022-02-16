@@ -6,11 +6,14 @@ Promise.all([
   faceapi.nets.ssdMobilenetv1.loadFromUri("/models"),
 ]).then(start);
 
-function start() {
+async function start() {
   const container = document.createElement("div");
   container.style.position = "relative";
 
   document.body.append(container);
+  const labeledFaceDescriptors = await loadlabeledImages();
+  const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
+
   document.body.append("Loaded");
 
   imageUpload.addEventListener("change", async () => {
@@ -29,10 +32,43 @@ function start() {
       .withFaceDescriptors();
     // document.body.append(detections.length);
     const resizedDetections = faceapi.resizeResults(detections, displaySize);
-    resizedDetections.forEach((detections) => {
-      const box = detections.detection.box;
-      const drawBox = new faceapi.draw.DrawBox(box, { label: "face" });
+    const results = resizedDetections.map((d) =>
+      faceMatcher.findBestMatch(d.descriptor)
+    );
+    results.forEach((result, i) => {
+      const box = resizedDetections[i].detection.box;
+      const drawBox = new faceapi.draw.DrawBox(box, {
+        label: result.tostring(),
+      });
       drawBox.draw(canvas);
     });
   });
+}
+
+function loadlabeledImages() {
+  const labels = [
+    "Black Widow",
+    "Captain America",
+    "Captain Marvel",
+    "Hawkeye",
+    "Jim Rhodes",
+    "Thor",
+    "Tony Stark",
+  ];
+  return Promise.all(
+    labels.map(async (label) => {
+      const descriptions = [];
+      for (let i = 0; i < 2; i++) {
+        const img = await faceapi.fetchImage(
+          `https://raw.githubusercontent.com/Mittal-web/Face-Recognition-Tool-JS/tree/main/labeled_images/${label}/${i}.jpg`
+        );
+        const detections = await faceapi
+          .detectSingleFace(img)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        descriptions.push(detections.descriptor);
+      }
+      return new faceapi.LabeledFaceDescriptors(label, descriptions);
+    })
+  );
 }
